@@ -40,6 +40,8 @@ SYSTEM_PROMPT = """\
 - Markdown記法（**、#、箇条書き記号など）は一切使わない。読み上げると不自然になる。
 - 方角や左右は、ユーザーから与えられた情報をそのまま使う。自分で計算し直さない。
 - 確実でないことは「たぶん」「〜と思われます」と正直に伝える。
+- 今日の日付と現在時刻は、質問に添えられた【現在日時】を正とする。
+  自分の知識から日付を推測しない（検索結果の日付の新旧もこれを基準に判断する）。
 - 直前までの会話を踏まえ、「それ」「その山」のような指示語も文脈から解釈する。
 
 位置と進行方向の扱い:
@@ -135,7 +137,11 @@ async def invoke(payload: dict, context):
 
     agent = _get_or_create_agent(session_id)
     turns_before = len(agent.messages)
-    log.info("session=%s turns_before=%d q=%r", session_id, turns_before, question[:80])
+    # Log the rider's words, not the context block the Lambda prepends (date,
+    # coordinates, address): the head of `question` is that block, so a plain
+    # prefix would show the date and never the question.
+    asked = question.rsplit("質問: ", 1)[-1]
+    log.info("session=%s turns_before=%d q=%r", session_id, turns_before, asked[:80])
 
     async for event in agent.stream_async(question):
         # Pass through only the model stream events; the SDK also emits
