@@ -108,7 +108,6 @@ The project uses a **flat resource model** — agents, memories, credentials, ga
 
 ## TouringProject での運用
 
-- ⚠️ **`main` にpushすると CodeBuild がデプロイする**（`buildspec.yml`。CodeBuild 自体は TouringProject_CICD）。
 - ⚠️ **デプロイ後、Runtime ARN を SSM（東京の `/trg/<env>/agent-runtime-arn`）に書く。**
-  **値が変わったときだけ Backend のビルドを起動する**（Backend は ARN をデプロイ時に焼き込むため）。
+  ⚠️ **値が変わったら Backend も再デプロイする**（Backend は ARN をデプロイ時に焼き込むため）。
 - `agentcore/aws-targets.json` はアカウントIDを含むので追跡しない。雛形は `aws-targets-sample.json`。
