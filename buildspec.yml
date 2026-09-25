@@ -1,0 +1,100 @@
+version: 0.2
+
+# Deploys the AgentCore agent (us-east-1) and publishes its runtime ARN to SSM.
+#
+# ⚠️ The Backend (TouringProject_Backend, Tokyo) reads that parameter, and it is
+# built by a SEPARATE CodeBuild project. The parameter is resolved when the SAM
+# stack deploys - the ARN is baked into the Lambda's environment and its IAM
+# policy - so a new ARN reaches the Backend only through a Backend deploy.
+# When the ARN changes (first deploy, or a renamed runtime), this build starts
+# the Backend's build itself; otherwise the Backend would keep calling the old
+# runtime without any deploy-time error.
+
+env:
+  variables:
+    AGENT_REGION: "us-east-1"
+    BACKEND_REGION: "ap-northeast-1"
+    # ⚠️ Pinned, not "latest". The agent is deployed by whatever version of
+    # this CLI the build installs, so an unpinned install would silently move
+    # CI onto a release nobody has run locally - and the CLI owns the CDK
+    # code it generates. Bump this deliberately, after trying it by hand.
+    #
+    # The package is `@aws/agentcore`; it provides the `agentcore` binary.
+    AGENTCORE_CLI_VERSION: "0.24.2"
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.13
+      nodejs: 20
+    commands:
+      - npm install -g aws-cdk "@aws/agentcore@${AGENTCORE_CLI_VERSION}"
+      - pip install uv
+      # Fail here rather than deep inside the deploy if the CLI is not usable.
+      - agentcore --version
+
+  build:
+    commands:
+      # ---------- 1. Deploy ----------
+      # aws-targets.json holds the account id and is gitignored, so CI writes
+      # it from the identity it already runs as.
+      - echo "--- Deploying Agent ---"
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - |
+        cat > agentcore/aws-targets.json <<EOF
+        [
+          {
+            "name": "default",
+            "account": "${ACCOUNT_ID}",
+            "region": "${AGENT_REGION}"
+          }
+        ]
+        EOF
+      - AWS_REGION=${AGENT_REGION} agentcore deploy -y
+
+      # ---------- 2. Publish the runtime ARN ----------
+      # ⚠️ Written in TOKYO, because that is where the SAM stack reads it.
+      # A CloudFormation export cannot be used: the AgentCore stack exports the
+      # ARN in us-east-1, and ImportValue does not cross regions.
+      # ⚠️ Selected BY NAME, not agentRuntimes[0]. The list has no guaranteed
+      # order, so an index silently picks the wrong runtime the day a second
+      # one exists - and the Backend would then be wired to it without any
+      # error. The name is derived from agentcore.json (<project>_<runtime>),
+      # so it cannot drift from what was just deployed.
+      # ⚠️ Never echo the ARN: it contains the AWS account id, and build logs
+      # are the easiest place to leak one.
+      - |
+        RUNTIME_NAME=$(python3 -c "import json; d=json.load(open('agentcore/agentcore.json')); print(f\"{d['name']}_{d['runtimes'][0]['name']}\")")
+        echo "Looking up runtime: ${RUNTIME_NAME}"
+        AGENT_ARN=$(aws bedrock-agentcore-control list-agent-runtimes \
+          --region ${AGENT_REGION} \
+          --query "agentRuntimes[?agentRuntimeName=='${RUNTIME_NAME}'].agentRuntimeArn | [0]" \
+          --output text)
+        if [ -z "$AGENT_ARN" ] || [ "$AGENT_ARN" = "None" ]; then
+          echo "Runtime ${RUNTIME_NAME} not found after deploy - refusing to publish an empty ARN." >&2
+          exit 1
+        fi
+        # Empty when the parameter does not exist yet (first deploy).
+        CURRENT_ARN=$(aws ssm get-parameter \
+          --name "/trg/${ENV}/agent-runtime-arn" \
+          --query Parameter.Value --output text \
+          --region ${BACKEND_REGION} 2>/dev/null || true)
+        if [ "$AGENT_ARN" = "$CURRENT_ARN" ]; then
+          echo "Agent runtime ARN unchanged."
+        else
+          aws ssm put-parameter \
+            --name "/trg/${ENV}/agent-runtime-arn" \
+            --value "$AGENT_ARN" \
+            --type String --overwrite \
+            --region ${BACKEND_REGION}
+          echo "Agent runtime ARN published to SSM; starting the Backend build."
+          # ---------- 3. Re-wire the Backend ----------
+          aws codebuild start-build \
+            --project-name "codebuild-trg-${ENV}-backend" \
+            --region ${BACKEND_REGION} \
+            --query build.id --output text
+        fi
+
+  post_build:
+    commands:
+      - echo "Agent deploy complete."

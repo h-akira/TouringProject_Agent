@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentcore_trg_dev_ask"
+version = "0.1.0"
+description = "AgentCore Runtime Application using Strands SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "aws-opentelemetry-distro",
+    "bedrock-agentcore >= 1.9.1",
+    "botocore[crt] >= 1.35.0",
+    "strands-agents >= 1.15.0",
+    # Reaches the AgentCore Gateway's web-search connector over MCP. The proxy
+    # handles SigV4 signing, since the gateway authorizes with AWS_IAM.
+    "mcp-proxy-for-aws",
+]
+
+[dependency-groups]
+# Test-only. Kept out of `dependencies` so it is not packaged into the runtime
+# image; `uv sync` installs it locally, `uv sync --no-dev` does not.
+dev = [
+    "pytest >= 8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

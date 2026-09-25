@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "touringAgent",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "touringAgent"
+  },
+  "runtimes": [
+    {
+      "name": "agentcore_trg_dev_ask",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/agentcore_trg_dev_ask/",
+      "runtimeVersion": "PYTHON_3_14",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP"
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [
+    {
+      "name": "gwTrgDevMain",
+      "protocolType": "MCP",
+      "description": "Web search gateway for the touring agent",
+      "targets": [
+        {
+          "name": "webSearch",
+          "targetType": "connector",
+          "connectorId": "web-search",
+          "configurations": [
+            {
+              "name": "WebSearch",
+              "description": "",
+              "parameterValues": {},
+              "parameterOverrides": []
+            }
+          ]
+        }
+      ],
+      "authorizerType": "AWS_IAM",
+      "enableSemanticSearch": true,
+      "exceptionLevel": "NONE"
+    }
+  ],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [],
+  "datasets": [],
+  "payments": []
+}
