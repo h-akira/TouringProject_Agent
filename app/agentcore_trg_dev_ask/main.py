@@ -73,8 +73,8 @@ MAX_CACHED_SESSIONS = 128
 # session_id -> Agent. In-process only: AgentCore gives each session its own
 # microVM, so this survives exactly as long as that microVM. A cold start (or
 # an idle timeout) empties it and the conversation silently restarts. Durable
-# history would need AgentCore Memory — an open question in
-# pre-research/agentcore/ section 8.
+# history would need AgentCore Memory, which this project does not use - see
+# docs/01_architecture.md section 3.
 _SESSION_AGENTS: "OrderedDict[str, Agent]" = OrderedDict()
 
 # Built once per process and shared by every session: the gateway connection is

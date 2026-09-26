@@ -1,7 +1,29 @@
-# AgentCore Project
+# TouringProject_Agent — AgentCore のエージェント
 
-> 📌 **このリポジトリは [TouringProject](https://github.com/h-akira/TouringProject) の submodule。**
-> 設計・経緯（`docs/` `adr/` `pre-research/`）と、**分離（2026-09-25）より前の git 履歴**は親リポジトリにある。
+ツーリング AI 会話アプリのエージェント（Bedrock AgentCore Runtime ＋ Strands・`us-east-1`）。会話の保持・回答の生成・Web 検索を担う。
+[TouringProject](https://github.com/h-akira/TouringProject) の submodule。
+
+| 見たいもの | 場所 |
+|---|---|
+| 設計 | [docs/](docs/README.md) |
+| プロジェクト全体の要件と契約 | [docs-parent/](docs-parent/README.md)（親リポジトリの写し。編集しない） |
+| AI 向けの規約 | [AGENTS.md](AGENTS.md) |
+
+## TouringProject での使い方
+
+- デプロイは Backend より先に行う。手元で `agentcore deploy` したら、Runtime の ARN を東京の SSM（`/trg/<env>/agent-runtime-arn`）に書く。ARN が変わったら Backend も再デプロイする。
+
+  ```sh
+  AWS_REGION=us-east-1 agentcore deploy -y
+  AGENT_ARN=$(AWS_PROFILE=touring aws bedrock-agentcore-control list-agent-runtimes \
+    --region us-east-1 --query 'agentRuntimes[0].agentRuntimeArn' --output text)
+  AWS_PROFILE=touring aws ssm put-parameter --name /trg/dev/agent-runtime-arn \
+    --value "$AGENT_ARN" --type String --overwrite --region ap-northeast-1
+  ```
+
+- `agentcore/aws-targets.json` はアカウント ID を含むので追跡しない。雛形は `aws-targets-sample.json`（実 ID を入れてリネームして使う）。
+
+以下は `agentcore` CLI が生成した説明。
 
 This project was created with the [AgentCore CLI](https://github.com/aws/agentcore-cli).
 
@@ -9,7 +31,7 @@ This project was created with the [AgentCore CLI](https://github.com/aws/agentco
 
 ```
 my-project/
-├── AGENTS.md               # AI coding assistant context
+├── AGENTS.md               # AI coding assistant context (TouringProject's own)
 ├── agentcore/
 │   ├── agentcore.json      # Project config (agents, memories, credentials, gateways, evaluators)
 │   ├── aws-targets.json    # Deployment targets (account + region)
@@ -105,9 +127,3 @@ The project uses a **flat resource model** — agents, memories, credentials, ga
 - [AgentCore CLI](https://github.com/aws/agentcore-cli)
 - [AgentCore CDK Constructs](https://github.com/aws/agentcore-l3-cdk-constructs)
 - [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/)
-
-## TouringProject での運用
-
-- ⚠️ **デプロイ後、Runtime ARN を SSM（東京の `/trg/<env>/agent-runtime-arn`）に書く。**
-  ⚠️ **値が変わったら Backend も再デプロイする**（Backend は ARN をデプロイ時に焼き込むため）。
-- `agentcore/aws-targets.json` はアカウントIDを含むので追跡しない。雛形は `aws-targets-sample.json`。

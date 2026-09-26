@@ -1,217 +1,51 @@
-# AgentCore Project
+# AGENTS.md — Agent
 
-This project contains configuration and infrastructure for an Amazon Bedrock AgentCore application.
+ツーリング AI 会話アプリのエージェント（Bedrock AgentCore Runtime ＋ Strands）。会話の保持・回答の生成・Web 検索を担う。
+親リポジトリ `TouringProject` の submodule。共通の規約は親の `AGENTS.md`（親の中で作業しているときは既に読まれている）。
+このファイルは `agentcore` CLI が生成したものを置き換えたもの。
 
-The `agentcore/` directory is a declarative model of the project. The `agentcore/cdk/` subdirectory uses the
-`@aws/agentcore-cdk` L3 constructs to deploy the configuration to AWS.
+## どこに何があるか
 
-## Mental Model
+| 場所 | 中身 |
+|---|---|
+| `docs/` | Agent の設計（現在の姿だけ） |
+| `docs-parent/` | 親の `docs/` の写し（要件・技術方針・契約）。⚠️ 編集しない。更新は親の `docs/sync.sh` |
+| `agentcore/agentcore.json` | プロジェクトの定義（Runtime・Gateway）。正本 |
+| `agentcore/.llm-context/` | `agentcore.json` の型定義と検証の制約（CLI の生成物） |
+| `agentcore/cdk/` | CDK（CLI の生成物） |
+| `app/agentcore_trg_dev_ask/` | エージェントのコード（`main.py`・`model/load.py`・`tools/`） |
+| `buildspec.yml` | CodeBuild の手順書 |
 
-The project uses a **flat resource model**. Agents, memories, credentials, gateways, evaluators, and policies are
-independent top-level arrays in `agentcore.json`. There is no binding between resources in the schema — each resource is
-provisioned independently. Agents discover memories and credentials at runtime via environment variables or SDK calls.
-Tags defined in `agentcore.json` flow through to deployed CloudFormation resources.
+Agent に固有の ADR は無い（必要になったら `adr/` を作る。書き方は親の `AGENTS.md`）。
+コードのコメントから参照してよいのは、`docs/`・`docs-parent/` と research の絶対 URL だけ（learning・親の adr は参照しない）。
 
-## Critical Invariants
+## 前提
 
-1. **Schema-First Authority:** The `.json` files are the source of truth. Do not modify agent behavior by editing
-   generated CDK code in `cdk/`.
-2. **Resource Identity:** The `name` field determines the CloudFormation Logical ID.
-   - **Renaming** a resource will **destroy and recreate** it.
-   - **Modifying** other fields will update the resource **in-place**.
-3. **Schema Validation:** If your JSON conforms to the types in `.llm-context/`, it will deploy successfully. Run
-   `agentcore validate` to check.
-4. **Resource Removal:** Use `agentcore remove` to remove resources. Run `agentcore deploy` after removal to tear down
-   deployed infrastructure.
+- ⚠️ リージョンは `us-east-1`（Web 検索のコネクタがそこにしか無い）。Backend は東京。混同すると動かない。
+- モデル ID は `us.anthropic.claude-sonnet-4-6`。⚠️ `jp.` は ap-northeast 専用で、us-east-1 からは "model identifier is invalid" になる。Claude 5 系はこのアカウントでは使えない。
+- ソースは S3 に zip で置く方式（CodeZip）。Docker は要らない。
+- Backend との約束（Runtime ARN の受け渡し・呼び出しの形）は契約（`docs-parent/03_units_contracts.md` UC-3・UC-5）。片方だけ変えない。
+- Bedrock・Strands の実装を書くときは `claude-api` スキルを参照する（モデル ID や SDK の仕様を記憶に頼らない）。
 
-## Directory Structure
+## agentcore の定義を変えるとき（CLI の生成物にあった不変条件）
 
-```
-myProject/
-├── AGENTS.md               # This file — AI coding assistant context
-├── agentcore/
-│   ├── agentcore.json      # Main project config (AgentCoreProjectSpec)
-│   ├── aws-targets.json    # Deployment targets (account + region)
-│   ├── .env.local          # Secrets — API keys (gitignored)
-│   ├── .llm-context/       # TypeScript type definitions for AI assistants
-│   │   ├── README.md       # Guide to using schema files
-│   │   ├── agentcore.ts    # AgentCoreProjectSpec types
-│   │   ├── aws-targets.ts  # AWS deployment target types
-│   │   └── mcp.ts          # Gateway and MCP tool types
-│   └── cdk/                # AWS CDK project (@aws/agentcore-cdk L3 constructs)
-├── app/                    # Agent application code
-└── evaluators/             # Custom evaluator code (if any)
-```
+- ⚠️ `.json` が正本。エージェントの振る舞いを `cdk/` の生成コードを直接いじって変えない。
+- ⚠️ リソースの `name` は CloudFormation の論理 ID になる。名前を変えるとリソースは作り直される（Runtime の ARN が変わり、Backend の再デプロイが要る）。他のフィールドの変更はその場で更新される。
+- 変える前に `agentcore/.llm-context/*.ts` の型と制約（`@regex`・`@min`・`@max`）を読み、列挙値は文字列そのままで書く。名前は CloudFormation で使える形（英数字・先頭は英字。AgentCore はハイフン不可）。
+- 変えたら `agentcore validate` で確かめる。リソースを消すときは `agentcore remove` を使う。
+- ⚠️ `agentcore/aws-targets.json` はアカウント ID を含むので追跡しない（雛形は `aws-targets-sample.json`）。`agentcore/.cli/`・`.env.local` も追跡しない。
 
-## Schema Reference
+## 作業の規則
 
-The `agentcore/.llm-context/` directory contains TypeScript type definitions optimized for AI coding assistants. Each
-file maps to a JSON config file and includes validation constraints as comments (`@regex`, `@min`, `@max`).
+- ⚠️ デプロイと実機での確認はユーザーが行う。AI は `agentcore deploy` を実行しない。
+- 手元で `agentcore deploy` した後は、Runtime の ARN を東京の SSM（`/trg/<env>/agent-runtime-arn`）に書く。ARN が変わったら Backend も再デプロイする。
+- エージェントのテストは `app/agentcore_trg_dev_ask/tests/`（`uv run pytest`）。
 
-| JSON Config | Schema File | Root Type |
-| --- | --- | --- |
-| `agentcore/agentcore.json` | `agentcore/.llm-context/agentcore.ts` | `AgentCoreProjectSpec` |
-| `agentcore/agentcore.json` (gateways) | `agentcore/.llm-context/mcp.ts` | `AgentCoreMcpSpec` |
-| `agentcore/aws-targets.json` | `agentcore/.llm-context/aws-targets.ts` | `AwsDeploymentTarget[]` |
+## 落とし穴
 
-### Key Types
-
-- **AgentCoreProjectSpec**: Root config with `runtimes`, `memories`, `credentials`, `agentCoreGateways`, `evaluators`, `onlineEvalConfigs`, `onlineInsightsConfigs`, `knowledgeBases`, `harnesses`, `policyEngines`, `policies`, `payments` (managers + connectors), `configBundles`, `datasets`, `runtimeEndpoints` arrays
-- **AgentEnvSpec**: Agent configuration (build type, entrypoint, code location, runtime version, network mode)
-- **Memory**: Memory resource with strategies (SEMANTIC, SUMMARIZATION, USER_PREFERENCE, EPISODIC) and expiry
-- **Credential**: API key or OAuth credential provider
-- **AgentCoreGateway**: MCP gateway with targets (Lambda, MCP server, OpenAPI, Smithy, API Gateway, web-search, knowledge-base)
-- **Evaluator**: LLM-as-a-Judge or code-based evaluator
-- **OnlineEvalConfig**: Continuous evaluation pipeline bound to an agent
-- **OnlineInsightsConfig** _[preview]_: Continuous failure-pattern analysis bound to an agent
-- **KnowledgeBase**: Managed Bedrock Knowledge Base auto-wired to a gateway
-- **Harness**: Declarative agent — runtime + tools + skills + memory + observability without writing agent code
-- **PolicyEngine** + **Policy**: Cedar policy engine with form-based guardrails (Bedrock content filters, prompt-attack, sensitive-info) or raw Cedar policies
-- **PaymentManager** + **PaymentConnector**: x402-protocol payment orchestration with provider credentials (CoinbaseCDP, StripePrivy)
-- **ConfigBundle**: Versioned runtime configuration as a separately-deployable resource
-- **Dataset**: Curated session dataset for batch evaluation and recommendation runs
-- **RuntimeEndpoint**: Named endpoint (e.g. `PROMPT_V1`) targeting a specific runtime version
-
-### Common Enum Values
-
-- **BuildType**: `'CodeZip'` | `'Container'`
-- **NetworkMode**: `'PUBLIC'` | `'VPC'`
-- **RuntimeVersion**: `'PYTHON_3_10'` | `'PYTHON_3_11'` | `'PYTHON_3_12'` | `'PYTHON_3_13'` | `'PYTHON_3_14'` | `'NODE_18'` | `'NODE_20'` | `'NODE_22'`
-- **MemoryStrategyType**: `'SEMANTIC'` | `'SUMMARIZATION'` | `'USER_PREFERENCE'` | `'EPISODIC'`
-- **GatewayTargetType**: `'lambda'` | `'mcpServer'` | `'openApiSchema'` | `'smithyModel'` | `'apiGateway'` | `'lambdaFunctionArn'` | `'connector'` (web-search, bedrock-knowledge-bases)
-- **ModelProvider**: `'Bedrock'` | `'Gemini'` | `'OpenAI'` | `'Anthropic'`
-- **PaymentProvider**: `'CoinbaseCDP'` | `'StripePrivy'`
-- **PolicyEnforcementMode**: `'ACTIVE'` | `'PASSIVE'`
-- **GuardrailContentFilter**: `'VIOLENCE'` | `'HATE'` | `'SEXUAL'` | `'MISCONDUCT'` | `'INSULTS'`
-
-### Build Types
-
-- **CodeZip**: Python source packaged as a zip and deployed directly to AgentCore Runtime.
-- **Container**: Docker image built in CodeBuild (ARM64), pushed to a per-agent ECR repository. Requires a `Dockerfile`
-  in the agent's `codeLocation` directory. For local development (`agentcore dev`), the container is built and run
-  locally with volume-mounted hot-reload.
-
-### Supported Frameworks (for template agents)
-
-- **Strands** — Bedrock, Anthropic, OpenAI, Gemini
-- **LangChain/LangGraph** — Bedrock, Anthropic, OpenAI, Gemini
-- **GoogleADK** — Gemini
-- **OpenAI Agents** — OpenAI
-- **Autogen** — Bedrock, Anthropic, OpenAI, Gemini
-
-### Protocols
-
-- **HTTP** — Standard HTTP agent endpoint
-- **MCP** — Model Context Protocol server
-- **A2A** — Agent-to-Agent protocol (Google A2A)
-
-## Deployment
-
-Deployments are orchestrated through the CLI:
-
-```bash
-agentcore deploy    # Synthesizes CDK and deploys to AWS
-agentcore status    # Shows deployment status
-```
-
-Alternatively, deploy directly via CDK:
-
-```bash
-cd agentcore/cdk
-npm install
-npx cdk synth
-npx cdk deploy
-```
-
-## Editing Schemas
-
-When modifying JSON config files:
-
-1. Read the corresponding `agentcore/.llm-context/*.ts` file for type definitions
-2. Check validation constraint comments (`@regex`, `@min`, `@max`)
-3. Use exact enum values as string literals
-4. Use CloudFormation-safe names (alphanumeric, start with letter)
-5. Run `agentcore validate` to verify changes
-
-## Harness Export
-
-`agentcore export harness` converts a harness configuration into a deployable Strands Python agent under `app/<agentName>/`.
-
-**After every export, you MUST read `app/<agentName>/EXPORT_NOTES.md` before proceeding.**
-
-This file lists any manual follow-up items required before the agent will deploy or run correctly — missing files to create, IAM policies to add, or configuration steps the exporter could not automate. A clean export produces "No manual steps required." Complete every item in the file before running `agentcore deploy`.
-
-```bash
-agentcore export harness --name <harnessName>   # generates app/<agentName>/EXPORT_NOTES.md
-cat app/<agentName>/EXPORT_NOTES.md             # read this before touching anything else
-```
-
-## CLI Commands
-
-Run `agentcore --help` or `agentcore <command> --help` for full flags. Commonly used:
-
-**Project lifecycle**
-
-| Command | Description |
-| --- | --- |
-| `agentcore create` | Create a new project |
-| `agentcore dev` | Run agent locally with hot-reload |
-| `agentcore deploy` | Deploy to AWS |
-| `agentcore invoke` | Invoke agent (local or deployed) |
-| `agentcore status` | Show deployment status |
-| `agentcore validate` | Validate configuration |
-| `agentcore package` | Package agent artifacts |
-| `agentcore import` | Import resources from a Bedrock AgentCore Starter Toolkit project |
-
-**Resources**
-
-| Command | Description |
-| --- | --- |
-| `agentcore add <resource>` | Add agent, memory, credential, gateway, gateway-target, evaluator, online-eval, online-insights, knowledge-base, harness, policy-engine, policy, payment-manager, payment-connector, config-bundle, dataset, runtime-endpoint |
-| `agentcore remove <resource>` | Remove any resource |
-| `agentcore export harness` | Export a harness to a Strands runtime agent under `app/<agentName>/` |
-
-**Jobs (run, view, archive, lifecycle)**
-
-| Command | Description |
-| --- | --- |
-| `agentcore run eval` | Run on-demand evaluation against agent traces |
-| `agentcore run batch-evaluation` | Run evaluators across all sessions at scale |
-| `agentcore run recommendation` | Optimize prompts or tool descriptions from real traces |
-| `agentcore run insights` _[preview]_ | Run failure-pattern analysis across sessions |
-| `agentcore run ab-test` | Start an A/B test (config-bundle or target-based) |
-| `agentcore run ingest` | Start a fresh ingestion job for every data source on a deployed knowledge base |
-| `agentcore view <type>` | List or view jobs (recommendation, batch-evaluation, ab-test, insights) |
-| `agentcore archive <type>` | Delete a job on the service + clear local history |
-| `agentcore stop <type>` | Stop a running batch-evaluation or ab-test |
-| `agentcore promote ab-test` | Apply the winning variant to `agentcore.json` |
-| `agentcore pause <type>` / `agentcore resume <type>` | Pause/resume a deployed online-eval, online-insights, or ab-test |
-
-**Config bundles & datasets**
-
-| Command | Description |
-| --- | --- |
-| `agentcore config-bundle versions` (alias `cb versions`) | List version history for a bundle |
-| `agentcore config-bundle diff` | Diff two versions of a bundle |
-| `agentcore config-bundle create-branch` | Create a new branch on an existing bundle |
-| `agentcore dataset download` | Download a dataset version locally |
-| `agentcore dataset publish-version` | Publish a new dataset version |
-| `agentcore dataset remove-version` | Remove a dataset version |
-
-**Observability & history**
-
-| Command | Description |
-| --- | --- |
-| `agentcore logs` | Stream/search agent runtime logs |
-| `agentcore logs evals` | Stream/search online-eval logs |
-| `agentcore traces list` / `agentcore traces get` | List recent traces or download one to JSON |
-| `agentcore evals history` | View past on-demand eval results |
-
-**Utilities**
-
-| Command | Description |
-| --- | --- |
-| `agentcore fetch access` | Fetch access info for deployed gateway or agent |
-| `agentcore feedback` | Send feedback (with optional screenshot) to the AgentCore team |
-| `agentcore update` | Check for and install CLI updates |
-| `agentcore telemetry` | View or change telemetry preferences |
+- ⚠️ AgentCore はアイドル中も課金される（文脈を保つため microVM が生きている）。
+- 初回の応答は10秒前後（コールドスタート）。アプリ側では縮められない。
+- ⚠️ `max_tokens` が厳しすぎると、回答が短くなるのではなく失敗し、壊れた部分応答が会話の履歴に残る。Web 検索のツール呼び出しも同じ枠を消費するので、読み上げる文章より余裕が要る。
+- AgentCore Memory は使わない（会話の継続は「一問一答＋α」まで。15分以上あけた続きは想定しない）。走行ログのような記録が要るなら、会話の記憶ではなく DB 連携として別に設計する。
+- メモ機能（US-X.01）は今は作らないが、`@tool` を足すだけで入れられる構造を保つ。
+- ログには質問の本文だけを出す（座標・住所のブロックは出さない）。

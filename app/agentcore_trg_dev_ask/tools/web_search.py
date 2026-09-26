@@ -6,7 +6,7 @@ index reached over MCP, which keeps the search inside AWS and means there is no
 third-party API key to store.
 
 Availability is the reason this whole project deploys to us-east-1 — the
-connector is offered there and nowhere else. See pre-research/websearch/.
+connector is offered there and nowhere else. See docs/01_architecture.md section 4.
 """
 
 import os
