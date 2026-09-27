@@ -3,8 +3,9 @@
 Covers two of the MVP stories: the conversation carries across invocations that
 share a runtimeSessionId (US-1.02), and the agent looks things up on the web
 rather than telling a rider who cannot touch their phone to check an app
-(US-1.04). Voice (Transcribe / Polly), API-key auth, and heading context come
-later.
+(US-1.04). Voice (Transcribe / Polly), API-key auth and the facts in the
+prompt (date, address, heading) are handled by the Backend before the question
+reaches this agent - see docs-parent/03_units_contracts.md UC-5.
 
 Deliberately trimmed from the CLI scaffold:
   - the scaffolded MCP client (mcp_client/, pointed at mcp.exa.ai) and skills/

@@ -6,8 +6,8 @@ from strands.models.bedrock import BedrockModel
 # INFERENCE_PROFILE-only. The CLI scaffolds a `global.` Sonnet 4.5 id, which
 # this account cannot invoke (AccessDeniedException). See docs/01_architecture.md section 2.
 #
-# `us.` rather than `jp.`: the whole project sits in us-east-1 because the
-# Web Search Tool connector is offered there and nowhere else
+# `us.` rather than `jp.`: the agent sits in us-east-1 (the Backend stays in
+# Tokyo) because the Web Search Tool connector is offered there and nowhere else
 # (docs/01_architecture.md section 2). `jp.` is an ap-northeast-only profile and fails
 # from us-east-1 with "The provided model identifier is invalid".
 DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-6"
