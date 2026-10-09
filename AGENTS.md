@@ -30,6 +30,7 @@ Agent に固有の ADR は無い（必要になったら `adr/` を作る。書�
 ## agentcore の定義を変えるとき（CLI の生成物にあった不変条件）
 
 - ⚠️ `.json` が正本。エージェントの振る舞いを `cdk/` の生成コードを直接いじって変えない。
+- 例外は、`agentcore.json` に書けない Runtime の実行ロールの権限だけ（`cdk/lib/cdk-stack.ts` の「Project addition」のブロック。いまは `geo-places`）。⚠️ `cdk/` を作り直すときはこのブロックを移す。
 - ⚠️ リソースの `name` は CloudFormation の論理 ID になる。名前を変えるとリソースは作り直される（Runtime の ARN が変わり、Backend の再デプロイが要る）。他のフィールドの変更はその場で更新される。
 - 変える前に `agentcore/.llm-context/*.ts` の型と制約（`@regex`・`@min`・`@max`）を読み、列挙値は文字列そのままで書く。名前は CloudFormation で使える形（英数字・先頭は英字。AgentCore はハイフン不可）。
 - 変えたら `agentcore validate` で確かめる。リソースを消すときは `agentcore remove` を使う。
@@ -40,6 +41,7 @@ Agent に固有の ADR は無い（必要になったら `adr/` を作る。書�
 - ⚠️ デプロイと実機での確認はユーザーが行う。AI は `agentcore deploy` を実行しない。
 - 手元で `agentcore deploy` した後は、Runtime の ARN を東京の SSM（`/trg/<env>/agent-runtime-arn`）に書く。ARN が変わったら Backend も再デプロイする。
 - エージェントのテストは `app/agentcore_trg_dev_ask/tests/`（`uv run pytest`）。
+- 手元での通しの確認は `scripts/ask_local.py`（本物の LLM とツールを呼ぶ。座標は公共のランドマークだけを使う）。
 
 ## 落とし穴
 

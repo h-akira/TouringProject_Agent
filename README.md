@@ -22,6 +22,14 @@
   ```
 
 - `agentcore/aws-targets.json` はアカウント ID を含むので追跡しない。雛形は `aws-targets-sample.json`（実 ID を入れてリネームして使う）。
+- デプロイせずに手元で質問を通すには `scripts/ask_local.py` を使う。Backend と同じ形のプロンプトとペイロードを組み、本物の LLM（Bedrock）とツールで答えさせ、呼ばれたツールと回答を表示する。座標は公共のランドマークだけを使う。
+
+  ```sh
+  cd app/agentcore_trg_dev_ask
+  eval "$(aws configure export-credentials --profile touring --format env)"
+  .venv/bin/python ../../scripts/ask_local.py "右手に見える公園は？" \
+    --lat 35.6812 --lon 139.7671 --heading 0 --address 東京都千代田区丸の内
+  ```
 
 以下は `agentcore` CLI が生成した説明。
 

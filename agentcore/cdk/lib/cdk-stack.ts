@@ -113,6 +113,19 @@ export class AgentCoreStack extends Stack {
     }
     this.application = new AgentCoreApplication(this, 'Application', appProps as any);
 
+    // Project addition, not CLI output: agentcore.json has no field for extra
+    // runtime permissions, and the place tools (app/.../tools/places.py) call
+    // Amazon Location directly. Keep this block if cdk/ is ever regenerated.
+    // geo-places has no per-resource ARN for search, hence "*".
+    for (const env of this.application.environments.values()) {
+      env.runtime.role.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          actions: ['geo-places:SearchNearby', 'geo-places:SearchText'],
+          resources: ['*'],
+        })
+      );
+    }
+
     // Create AgentCoreMcp if there are gateways configured
     if (mcpSpec?.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0) {
       new AgentCoreMcp(this, 'Mcp', {
